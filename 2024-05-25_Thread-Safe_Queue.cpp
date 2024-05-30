@@ -4,6 +4,7 @@
 #include <mutex> 
 #include <queue> 
 #include <thread> 
+#include <vector>
 
 using namespace std;
 
@@ -25,19 +26,21 @@ std::condtional_variables для уведомлений.
 template <typename T>
 class safe_queue
 {
-    T f;
-    queue<std::function<void()>> workQueue;
-    mutex workQueueMutex;
-    condition_variable cv;
+	T f;
+	queue<std::function<void()>> workQueue;
+	mutex workQueueMutex;
+	condition_variable cv;
 public:
-    safe_queue(T func) : f(func) {}
-    T push()
-    {
-        std::queue<std::function<void()>> T;
-    };
-    T pop()
-    {
-    };
+	safe_queue(T func) : f(func) {}
+	void push(T new_task)
+	{
+		std::lock_guard<std::mutex> lk(workQueueMutex);
+		workQueue.push(std::move(new_task));
+		cv.notify_one();
+	};
+	T pop()
+	{
+	};
 };
 
 
@@ -55,138 +58,151 @@ public:
 */
 class thread_pool {
 public:
-    // Конструктор для создания пула потоков с заданным количеством потоков
-    thread_pool(size_t num_threads = thread::hardware_concurrency())
-    {
-        // Создание рабочих потоков
-        for (size_t i = 0; i < num_threads; ++i) {
-            threads.emplace_back([this] {
-                while (true) {
-                    function<void()> task;
-                    // Разблокировка очереди перед выполнением задачи, чтобы другие потоки могли выполнять задачи в очереди
-                    {
-                        // Блокировка очереди для безопасного обмена данными
-                        unique_lock<mutex> lock(
-                            queue_mutex);
+	// Конструктор для создания пула потоков с заданным количеством потоков
+	thread_pool(size_t num_threads = thread::hardware_concurrency())
+	{
+		// Создание рабочих потоков
 
-                        // Ожидание, пока не появится задача для выполнения или пул не будет остановлен 
-                        cv.wait(lock, [this] {
-                            return !tasks.empty() || flagDone;
-                            });
+		for (int i = 0; i < num_threads - 3; i++)
+		{
+			threads.push_back(std::thread(work));
+		}
 
-                        // выход из потока, если пул остановлен и задач нет 
-                        if (flagDone && tasks.empty()) {
-                            return;
-                        }
+		for (auto& thread : threads)
+		{
+			thread.join();
+		}
 
-                        // Получить следующую задачу из очереди
-                        task = move(tasks.front());
-                        tasks.pop();
-                    }
+		/*
+		for (size_t i = 0; i < num_threads; ++i) {
+			threads.emplace_back([this] {
+				while (true) {
+					function<void()> task;
+					// Разблокировка очереди перед выполнением задачи, чтобы другие потоки могли выполнять задачи в очереди
+					{
+						// Блокировка очереди для безопасного обмена данными
+						unique_lock<mutex> lock(
+							queue_mutex);
 
-                    task();
-                }
-                });
-        }
-    }
+						// Ожидание, пока не появится задача для выполнения или пул не будет остановлен 
+						cv.wait(lock, [this] {
+							return !tasks.empty() || flagDone;
+							});
 
-    // Деструктор для остановки пула потоков 
-    ~thread_pool()
-    {
-        {
-            // Блокировка очереди, чтобы безопасно обновить флажок остановки
-            unique_lock<mutex> lock(queue_mutex);
-            flagDone = true;
-        }
+						// выход из потока, если пул остановлен и задач нет 
+						if (flagDone && tasks.empty()) {
+							return;
+						}
 
-        // Оповещение всех потоков 
-        cv.notify_all();
+						// Получить следующую задачу из очереди
+						task = move(tasks.front());
+						tasks.pop();
+					}
 
-        // Объединение всех рабочих потоков для обеспечения выполнения ими своих задач 
-        for (auto& thread : threads) {
-            thread.join();
-        }
-    }
+					task();
+				}
+				});
+		}
+		*/
+	}
 
-    // Постановка задачи в очередь для выполнения пулом потоков
-    void submit(function<void()> task)
-    {
-        unique_lock<std::mutex> lock(queue_mutex);
-        tasks.emplace(move(task));
-        cv.notify_one();
-    }
+	// Деструктор для остановки пула потоков 
+	~thread_pool()
+	{
+		{
+			// Блокировка очереди, чтобы безопасно обновить флажок остановки
+			unique_lock<mutex> lock(queue_mutex);
+			flagDone = true;
+		}
 
-    void work()
-    {
-        queue_mutex.lock();
-        std::cout << "Start working thread id: " << std::this_thread::get_id() << std::endl;
-        queue_mutex.unlock();
+		// Оповещение всех потоков 
+		cv.notify_all();
 
-        while (!flagDone || !tasks.empty())
-        {
-            std::lock_guard<std::mutex> lockGuard{ queue_mutex };
-            if (!tasks.empty())
-            {
-                auto task = tasks.front();
-                tasks.pop();
-                task();
-            }
-            else
-            {
-                std::this_thread::yield();
-            }
-        }
-    }
+		// Объединение всех рабочих потоков для обеспечения выполнения ими своих задач 
+		for (auto& thread : threads) {
+			thread.join();
+		}
+	}
+
+	// Постановка задачи в очередь для выполнения пулом потоков
+	void submit(function<void()> task)
+	{
+		unique_lock<std::mutex> lock(queue_mutex);
+		tasks.emplace(move(task));
+		cv.notify_one();
+	}
+
+	void work()
+	{
+		queue_mutex.lock();
+		std::cout << "Start working thread id: " << std::this_thread::get_id() << std::endl;
+		queue_mutex.unlock();
+
+		while (!flagDone || !tasks.empty())
+		{
+			std::lock_guard<std::mutex> lockGuard{ queue_mutex };
+			if (!tasks.empty())
+			{
+				auto task = tasks.front();
+				tasks.pop();
+				task();
+			}
+			else
+			{
+				std::this_thread::yield();
+			}
+		}
+	}
 private:
-    // Вектор для хранения рабочих потоков 
-    vector<thread> threads;
+	// Вектор для хранения рабочих потоков 
+	vector<thread> threads;
 
-    // Очередь задач 
-    queue<function<void()> > tasks;
+	// Очередь задач 
+	queue<function<void()> > tasks;
 
-    // Мьютекс для синхронизации доступа к общим данным
-    mutex queue_mutex;
+	// Мьютекс для синхронизации доступа к общим данным
+	mutex queue_mutex;
 
-    // Переменная условия, сигнализирующая об изменениях в состоянии очереди задач 
-    condition_variable cv;
+	// Переменная условия, сигнализирующая об изменениях в состоянии очереди задач 
+	condition_variable cv;
 
-    // Флаг, указывающий, следует ли останавливать пул потоков или нет 
-    bool flagDone = false;
+	// Флаг, указывающий, следует ли останавливать пул потоков или нет 
+	bool flagDone = false;
 };
 
 void func1()
 {
-    std::this_thread::sleep_for(std::chrono::microseconds(200));
+	std::this_thread::sleep_for(std::chrono::microseconds(200));
 
-    std::cout << "Working thread id: " << std::this_thread::get_id() << " " << __FUNCTION__ << "..." << std::endl;
+	std::cout << "Working thread id: " << std::this_thread::get_id() << " " << __FUNCTION__ << "..." << std::endl;
 }
 
 void func2()
 {
-    std::this_thread::sleep_for(std::chrono::microseconds(200));
+	std::this_thread::sleep_for(std::chrono::microseconds(200));
 
-    std::cout << "Working thread id: " << std::this_thread::get_id() << " " << __FUNCTION__ << "..." << std::endl;
+	std::cout << "Working thread id: " << std::this_thread::get_id() << " " << __FUNCTION__ << "..." << std::endl;
 }
 
 int main()
 {
-    auto cores = thread::hardware_concurrency();
-    thread_pool pool(cores);
+	auto cores = thread::hardware_concurrency();
+	thread_pool pool(cores);
 
-    // Постановка задач в очередь на выполнение 
-    for (int i = 0; i < 5; ++i) {
-        pool.submit([i] {
-            cout << "Task " << i << " is running on thread "
-                << this_thread::get_id() << endl;
-            // Simulate some work 
-            this_thread::sleep_for(
-                chrono::milliseconds(100));
-            });
-    }
+	// Постановка задач в очередь на выполнение 
+	for (int i = 0; i < 5; ++i) {
+		pool.submit([i] {
+			cout << "Task " << i << " is running on thread "
+				<< this_thread::get_id() << endl;
+			// Simulate some work 
+			this_thread::sleep_for(
+				chrono::milliseconds(100));
+			});
+	}
 
 
-    system("pause");
-    return 0;
+	system("pause");
+	return 0;
 }
 
 /*
