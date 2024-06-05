@@ -65,13 +65,14 @@ public:
 
 		for (int i = 0; i < num_threads - 3; i++)
 		{
-			threads.push_back(std::thread(work));
+			threads.push_back(std::thread(&thread_pool::work, this));
 		}
-
+		/*
 		for (auto& thread : threads)
 		{
 			thread.join();
 		}
+		*/
 
 		/*
 		for (size_t i = 0; i < num_threads; ++i) {
@@ -190,6 +191,9 @@ int main()
 	thread_pool pool(cores);
 
 	// Постановка задач в очередь на выполнение 
+	std::thread pool.submit[0] {func1};
+	
+	/*
 	for (int i = 0; i < 5; ++i) {
 		pool.submit([i] {
 			cout << "Task " << i << " is running on thread "
@@ -199,6 +203,7 @@ int main()
 				chrono::milliseconds(100));
 			});
 	}
+	*/
 
 
 	system("pause");
