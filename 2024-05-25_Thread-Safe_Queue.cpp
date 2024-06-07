@@ -173,14 +173,14 @@ private:
 
 void func1()
 {
-	std::this_thread::sleep_for(std::chrono::microseconds(200));
+	//std::this_thread::sleep_for(std::chrono::microseconds(200));
 
 	std::cout << "Working thread id: " << std::this_thread::get_id() << " " << __FUNCTION__ << "..." << std::endl;
 }
 
 void func2()
 {
-	std::this_thread::sleep_for(std::chrono::microseconds(200));
+	//std::this_thread::sleep_for(std::chrono::microseconds(200));
 
 	std::cout << "Working thread id: " << std::this_thread::get_id() << " " << __FUNCTION__ << "..." << std::endl;
 }
@@ -191,7 +191,8 @@ int main()
 	thread_pool pool(cores);
 
 	// Постановка задач в очередь на выполнение 
-	std::thread pool.submit[0] {func1};
+	pool.submit(func1);
+	pool.submit(func2);
 	
 	/*
 	for (int i = 0; i < 5; ++i) {
