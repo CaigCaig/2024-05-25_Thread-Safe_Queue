@@ -38,8 +38,12 @@ public:
 		workQueue.push(std::move(new_task));
 		cv.notify_one();
 	};
-	T pop()
+	T pop(T task)
 	{
+		std::unique_lock<std::mutex> lk(workQueueMutex);
+		cv.wait(lk, [] {workQueue.pop(task); });
+		// std::lock_guard<std::mutex> lk(workQueueMutex);
+		// workQueue.pop(task);
 	};
 };
 
@@ -129,7 +133,8 @@ public:
 	void submit(function<void()> task)
 	{
 		unique_lock<std::mutex> lock(queue_mutex);
-		tasks.emplace(move(task));
+		//tasks.emplace(move(task));
+		work_queue.push(task);
 		cv.notify_one();
 	}
 
@@ -139,6 +144,13 @@ public:
 		std::cout << "Start working thread id: " << std::this_thread::get_id() << std::endl;
 		queue_mutex.unlock();
 
+		if (!work_queue.empty())
+		{
+			work_queue.pop();
+
+		}
+
+		/*
 		while (!flagDone || !tasks.empty())
 		{
 			std::lock_guard<std::mutex> lockGuard{ queue_mutex };
@@ -153,6 +165,7 @@ public:
 				std::this_thread::yield();
 			}
 		}
+		*/
 	}
 private:
 	// Вектор для хранения рабочих потоков 
@@ -160,6 +173,7 @@ private:
 
 	// Очередь задач 
 	queue<function<void()> > tasks;
+	queue<function<void()> > work_queue;
 
 	// Мьютекс для синхронизации доступа к общим данным
 	mutex queue_mutex;
@@ -173,16 +187,24 @@ private:
 
 void func1()
 {
-	//std::this_thread::sleep_for(std::chrono::microseconds(200));
+	uint32_t counter = 0;
+	std::this_thread::sleep_for(std::chrono::microseconds(200000));
 
-	std::cout << "Working thread id: " << std::this_thread::get_id() << " " << __FUNCTION__ << "..." << std::endl;
+	while (1) {
+		std::cout << "Working thread id: " << std::this_thread::get_id() << " " << __FUNCTION__ << "..." << " Iteration: " << counter++ << std::endl;
+		std::this_thread::sleep_for(std::chrono::microseconds(1000000));
+	}
 }
 
 void func2()
 {
-	//std::this_thread::sleep_for(std::chrono::microseconds(200));
+	uint32_t counter = 0;
+	std::this_thread::sleep_for(std::chrono::microseconds(500000));
 
-	std::cout << "Working thread id: " << std::this_thread::get_id() << " " << __FUNCTION__ << "..." << std::endl;
+	while (1) {
+		std::cout << "Working thread id: " << std::this_thread::get_id() << " " << __FUNCTION__ << "..." << " Iteration: " << counter++ << std::endl;
+		std::this_thread::sleep_for(std::chrono::microseconds(1000000));
+	}
 }
 
 int main()
